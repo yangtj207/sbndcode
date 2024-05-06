@@ -46,6 +46,8 @@ cet_build_plugin(HitDumper art::module SOURCE HitDumper_module.cc LIBRARIES ${MO
 cet_build_plugin(MuonTrackFilter art::module SOURCE MuonTrackFilter_module.cc LIBRARIES ${MODULE_LIBRARIES})
 cet_build_plugin(MuonTrackProducer art::module SOURCE MuonTrackProducer_module.cc LIBRARIES ${MODULE_LIBRARIES})
 cet_build_plugin(OnlineEvd art::module SOURCE OnlineEvd_module.cc LIBRARIES ${MODULE_LIBRARIES})
+cet_build_plugin(TPCWFAna art::module SOURCE TPCWFAna_module.cc LIBRARIES ${MODULE_LIBRARIES})
+cet_build_plugin(Decon1D art::module SOURCE Decon1D_module.cc LIBRARIES ${MODULE_LIBRARIES})
 
 install_source()
 

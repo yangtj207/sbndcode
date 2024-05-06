@@ -1,0 +1,35 @@
+#include "services_sbnd.fcl"
+#include "TPCChannelMapService.fcl"
+
+process_name: SBNDEVD
+
+services: {
+    TFileService: { fileName: "sbndwf.root" }
+    @table::sbnd_geometry_services
+}
+
+physics:
+{
+
+  analyzers: {}
+
+  ana: [ wf ]
+
+  end_paths:     [ ana ] 
+}
+
+source: {
+  module_type: RootInput
+  maxEvents:  1  # Number of events to create
+}
+
+outputs: {
+}
+
+physics.analyzers.wf:  {
+    module_type: "TPCWFAna"
+    RawDigitModuleLabel: "daq"
+#    palette: 87 #kLightTemperature
+#    palette: 55 #kRainBow
+#    palette: 104 #kTemperatureMap
+}
