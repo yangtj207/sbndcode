@@ -118,7 +118,7 @@ void sbnd::OnlineEvd::analyze(art::Event const& e)
   for (int i = 0; i<6; ++i){
     int tpc = i/3;
     int plane = i%3;
-    hrawadc[i] = new TH2D(Form("hrawadc%d",i),Form("Run %d Event %d TPC %d Plane %d;Wire;Tick;ADC", run, event, tpc, plane), nbins[plane], 0, nbins[plane]-1, 3400, 0, 3400);
+    hrawadc[i] = new TH2D(Form("hrawadc%d",i),Form("Run %d Event %d TPC %d Plane %d;Wire;Tick;ADC", run, event, tpc, plane), nbins[plane], 0, nbins[plane]-1, 3415, 0, 3415);
     hrawadc[i]->SetMaximum(60);
     hrawadc[i]->SetMinimum(-20);
     hrawadc[i]->GetXaxis()->CenterTitle(true);
