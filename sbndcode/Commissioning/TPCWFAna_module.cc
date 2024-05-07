@@ -24,10 +24,13 @@
 
 #include "TH1D.h"
 
+#include <iostream>
+
 namespace sbnd {
   class TPCWFAna;
 }
 
+using namespace std;
 
 class sbnd::TPCWFAna : public art::EDAnalyzer {
 public:
@@ -51,7 +54,7 @@ private:
 
   // Declare member data here.
   art::InputTag fRawDigitModuleLabel;
-  TH1D *hwf[3];
+  TH1D *hwf[6];
   TH1D *hnoise[3][230];
 
 };
@@ -68,10 +71,12 @@ sbnd::TPCWFAna::TPCWFAna(fhicl::ParameterSet const& p)
 void sbnd::TPCWFAna::analyze(art::Event const& e)
 {
   // Implementation of required member function here.
+  int run = e.run();
+  int event = e.id().event();
 
   art::ServiceHandle<geo::Geometry> geo;
 
-  int nwfs[3] = {0};
+  int nwfs[6] = {0};
 
   // Get raw digits
   auto const& rawdigts = e.getProduct<std::vector<raw::RawDigit>>(fRawDigitModuleLabel);
@@ -85,90 +90,120 @@ void sbnd::TPCWFAna::analyze(art::Event const& e)
     int plane = chids[0].Plane;
     int wire = chids[0].Wire;
     int idx = -1;
-    if (tpc== 0 && plane == 0 && 
-        (wire >= 235 && wire <= 432)
+    if (run == 12007 && event == 926){
+      if (tpc== 0 && plane == 0 && 
+          (wire >= 235 && wire <= 432)
 //        ( (wire >= 235 && wire <= 432) ||
 //          (wire >= 461 && wire <= 541) ||
 //          (wire >= 552 && wire <= 599) ||
 //          (wire >= 618 && wire <= 671) ||
 //          (wire >= 953 && wire <= 1196)||
 //          (wire >= 1299 && wire <= 1455))
-        ){
-      idx = 0;
+          ){
+        idx = 0;
+      }
+      if (tpc == 0 && plane == 1 &&
+          (wire >=580 && wire <= 900)){
+        //        (wire >=580 && wire <= 926)){
+        idx = 1;
+      }
+      if (tpc == 0 && plane == 2 &&
+          (wire >=505 && wire <= 665)){
+        //        (wire >=580 && wire <= 926)){
+        idx = 2;
+      }
     }
-    if (tpc == 0 && plane == 1 &&
-        (wire >=580 && wire <= 900)){
-      //        (wire >=580 && wire <= 926)){
-      idx = 1;
+    if (run == 12007 && event == 917){
+      if (tpc== 1 && plane == 0 && 
+          (wire >= 805 && wire <= 1279)
+          //(wire >= 805 && wire <= 932)
+          ){
+        idx = 3;
+      }
+      if (tpc == 1 && plane == 1 &&
+          (wire >=1446 && wire <= 1774)){
+        idx = 4;
+      }
+      if (tpc == 1 && plane == 2 &&
+          (wire >=1472 && wire <= 1567)){
+        idx = 5;
+      }
     }
-    if (tpc == 0 && plane == 2 &&
-        (wire >=505 && wire <= 665)){
-      //        (wire >=580 && wire <= 926)){
-      idx = 2;
+    int mintick = 0;
+    int maxtick = 3415;
+    if (run == 12007 && event == 917){
+      mintick = 1750;
+      maxtick = 1850;
     }
-    if (idx==0 || idx==1){
+    if (run == 12007 && event == 926){
+      mintick = 550;
+      maxtick = 900;
+    }
+    if (idx==0 || idx==1 || idx == 3 || idx == 4){
       double minadc = 1e10;
       int minbin = -1;
-      for (size_t i = 0; i<rawadc.size(); ++i){
+      for (int i = mintick; i<maxtick; ++i){
         if (rawadc[i]<minadc){
           minbin = i;
           minadc = rawadc[i];
         }
       }
-      if (minbin!=-1){
+      if (minbin!=-1 && minadc - rd.GetPedestal() < -5){
+        ++nwfs[idx];
         for (int i = 1; i<=700; ++i){
           double binc = hwf[idx]->GetBinContent(i);
           hwf[idx]->SetBinContent(i, binc + rawadc[minbin-200+i] - rd.GetPedestal());
         }
       }
     }
-    if (idx==2){
+    if (idx==2 || idx == 5){
       double maxadc = -1e10;
       int maxbin = -1;
-      for (size_t i = 0; i<rawadc.size(); ++i){
+      for (int i = mintick; i<maxtick; ++i){
         if (rawadc[i]>maxadc){
           maxbin = i;
           maxadc = rawadc[i];
         }
       }
       if (maxbin!=-1){
+        ++nwfs[idx];
         for (int i = 1; i<=700; ++i){
+          //if (maxbin-200+i>=int(rawadc.size())) continue;
           double binc = hwf[idx]->GetBinContent(i);
           hwf[idx]->SetBinContent(i, binc + rawadc[maxbin-200+i] - rd.GetPedestal());
         }
       }
     }
-    if (idx!=-1){
-      ++nwfs[idx];
-    }
     int idx1 = -1;
     int idx2 = -1;
-    if (tpc == 0 && plane == 0){
-      idx1 = 0;
-      if (wire >= 1650 && wire <1880){
-        idx2 = wire - 1650;
+    if (run == 12007 && event == 926){
+      if (tpc == 0 && plane == 0){
+        idx1 = 0;
+        if (wire >= 1650 && wire <1880){
+          idx2 = wire - 1650;
+        }
       }
-    }
-    if (tpc == 0 && plane == 1){
-      idx1 = 1;
-      if (wire >= 20 && wire <250){
-        idx2 = wire - 20;
+      if (tpc == 0 && plane == 1){
+        idx1 = 1;
+        if (wire >= 20 && wire <250){
+          idx2 = wire - 20;
+        }
       }
-    }
-    if (tpc == 0 && plane == 2){
-      idx1 = 2;
-      if (wire >= 1430 && wire < 1660){
-        idx2 = wire - 1430;
+      if (tpc == 0 && plane == 2){
+        idx1 = 2;
+        if (wire >= 1430 && wire < 1660){
+          idx2 = wire - 1430;
+        }
       }
-    }
-    if (idx1 != -1 && idx2 != -1){
-      for (size_t i = 0; i<rawadc.size(); ++i){
-        hnoise[idx1][idx2]->SetBinContent(i+1, rawadc[i] - rd.GetPedestal());
+      if (idx1 != -1 && idx2 != -1){
+        for (size_t i = 0; i<rawadc.size(); ++i){
+          hnoise[idx1][idx2]->SetBinContent(i+1, rawadc[i] - rd.GetPedestal());
+        }
       }
     }
   }
-  for (int i = 0; i<3; ++i){
-    hwf[i]->Scale(1./nwfs[i]);
+  for (int i = 0; i<6; ++i){
+    if (nwfs[i]) hwf[i]->Scale(1./nwfs[i]);
   }
 }
 
@@ -176,8 +211,10 @@ void sbnd::TPCWFAna::beginJob()
 {
   // Implementation of optional member function here.
   art::ServiceHandle<art::TFileService> tfs;
-  for (int i = 0; i<3; ++i){
+  for (int i = 0; i<6; ++i){
     hwf[i] = tfs->make<TH1D>(Form("hwf%d",i), Form("hwf%d",i), 700,0,700);
+  }
+  for (int i = 0; i<3; ++i){
     for (int j = 0; j<230; ++j){
       hnoise[i][j] = tfs->make<TH1D>(Form("hnoise%d_%d",i,j),Form("hnoise%d_%d",i,j), 3415, 0, 3415);
     }

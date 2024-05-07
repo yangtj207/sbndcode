@@ -71,7 +71,7 @@ sbnd::Decon1D::Decon1D(fhicl::ParameterSet const& p)
 {
   produces<std::vector<recob::Wire>>();
 
-  vresp.resize(3);
+  vresp.resize(6);
 
   // Get response functions
   std::string fullname;
@@ -83,14 +83,13 @@ sbnd::Decon1D::Decon1D(fhicl::ParameterSet const& p)
   }
   else{
     resfile = TFile::Open(fullname.c_str());
-    TH1D *hre[3];
-    TH1D *him[3];
-    char label[3][10] = {"u","v","y"};
-    for (int i = 0; i<3; ++i){
-      hre[i] = (TH1D*)resfile->Get(Form("%sre",label[i]));
-      him[i] = (TH1D*)resfile->Get(Form("%sim",label[i]));
-      if (!hre[i]) throw cet::exception("sbnd::Decon1D") << "Unable to find response "<<Form("%sre",label[i]);
-      if (!him[i]) throw cet::exception("sbnd::Decon1D") << "Unable to find response "<<Form("%sim",label[i]);
+    TH1D *hre[6];
+    TH1D *him[6];
+    for (int i = 0; i<6; ++i){
+      hre[i] = (TH1D*)resfile->Get(Form("re%d",i));
+      him[i] = (TH1D*)resfile->Get(Form("im%d",i));
+      if (!hre[i]) throw cet::exception("sbnd::Decon1D") << "Unable to find response "<<Form("re%d",i);
+      if (!him[i]) throw cet::exception("sbnd::Decon1D") << "Unable to find response "<<Form("im%d",i);
       for (int j = 1; j<=3415; ++j){
         vresp[i].push_back(TComplex(hre[i]->GetBinContent(j),
                                     him[i]->GetBinContent(j)));
@@ -120,14 +119,15 @@ void sbnd::Decon1D::produce(art::Event& e)
     int ch = rd.Channel();
     auto const & chids = geo->ChannelToWire(ch);
     int plane = chids[0].Plane;
+    int tpc = chids[0].TPC;
     for (size_t i = 0; i<rawadc.size(); ++i){
       fftr2c->SetPoint(i, rawadc[i] - rd.GetPedestal());
     }
     fftr2c->Transform();
-    for (size_t i = 0; i<rawadc.size(); ++i){
+    for (size_t i = 0; i<rawadc.size()/2+1; ++i){
       double re, im;
       fftr2c->GetPointComplex(i, re, im);
-      TComplex point = TComplex(re, im)*vresp[plane][i];
+      TComplex point = TComplex(re, im)*vresp[plane+3*tpc][i];
       fftc2r->SetPointComplex(i,point);
     }
     fftc2r->Transform();
