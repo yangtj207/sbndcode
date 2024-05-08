@@ -13,8 +13,12 @@ sbnd::DigitalNoiseChannelStatus::DigitalNoiseChannelStatus(fhicl::ParameterSet c
   fNBADCutRawDigit = p.get<float>("NBADCutRawDigit",5);
   fRawDigitLabel = p.get<std::string>("RawDigitLabel","daq");
   fRecobWireLabel = p.get<std::string>("RecobWireLabel","caldata");
-
-  areg.sPreProcessEvent.watch(this, &sbnd::DigitalNoiseChannelStatus::priv_PrepEvent);
+  fNAwayFromPedestalRawDigit = p.get<int>("NAwayFromPedestalRawDigit",100);
+  fDistFromPedestalRawDigit = p.get<int>("DistFromPedestalRawDigit",100);
+  fNAwayFromPedestalRecobWire = p.get<int>("NAwayFromPedestalRecobWire",100);
+  fDistFromPedestalRecobWire = p.get<float>("DistFromPedestalRecobWire",100);
+  
+  areg.sPreProcessEvent.watch(this, &sbnd::DigitalNoiseChannelStatus::pub_PrepEvent);
 }
 
 bool sbnd::DigitalNoiseChannelStatus::IsBad(raw::ChannelID_t chan) const
@@ -37,7 +41,7 @@ size_t sbnd::DigitalNoiseChannelStatus::NBadChannels() const
 // put cuts on RMS, number of 0xBAD samples, and whether the differences between a sample and
 // the first are all even (catches all the powers of two).
 
-void sbnd::DigitalNoiseChannelStatus::priv_PrepEvent(const art::Event& evt, art::ScheduleContext)
+void sbnd::DigitalNoiseChannelStatus::pub_PrepEvent(const art::Event& evt, art::ScheduleContext)
 {
   fDNChannels.clear();
   if (fRawDigitLabel != "")
@@ -52,15 +56,21 @@ void sbnd::DigitalNoiseChannelStatus::priv_PrepEvent(const art::Event& evt, art:
 	  rawadc.resize(rd.Samples());
 	  raw::Uncompress(rd.ADCs(), rawadc, rd.GetPedestal(), rd.Compression());
 	  bool alleven = true;
+	  int naway = 0;
 	  const short adc0 = rawadc.at(0);
 	  for (size_t i=0; i< rd.Samples(); ++i)
 	    {
 	      const short adc = rawadc.at(i);
 	      if (adc == 0xBAD) ++nhexbad;
-	      alleven &= ( ((adc - adc0) % 2) == 0 ); 
+	      alleven &= ( ((adc - adc0) % 2) == 0 );
+	      if (std::abs(adc - rd.GetPedestal()) > fDistFromPedestalRawDigit)
+		{
+		  ++naway;
+		}
 	    }
 	  chanbad |= (nhexbad > fNBADCutRawDigit);
 	  chanbad |= alleven;
+	  chanbad |= (naway > fNAwayFromPedestalRawDigit);
 	  if (chanbad) fDNChannels.emplace(rd.Channel());
 	}
     }
@@ -73,6 +83,16 @@ void sbnd::DigitalNoiseChannelStatus::priv_PrepEvent(const art::Event& evt, art:
 	  bool chanbad = false;
 	  auto rms = TMath::RMS(rw.NSignal(),rw.Signal().data());
 	  chanbad |= (rms > fRMSCutWire);
+	  auto mns = TMath::Mean(rw.NSignal(),rw.Signal().data());
+	  int naway = 0;
+	  for (size_t i=0; i<rw.NSignal(); ++i)
+	    {
+	      if (std::abs(rw.Signal()[i] - mns) > fDistFromPedestalRecobWire)
+		{
+		  naway ++;
+		}
+	    }
+	  chanbad |= (naway > fNAwayFromPedestalRecobWire);
 	  if (chanbad) fDNChannels.emplace(rw.Channel());
 	}
     }
@@ -82,3 +102,7 @@ void sbnd::DigitalNoiseChannelStatus::priv_PrepEvent(const art::Event& evt, art:
   //    std::cout << "noisy chan: " << c << std::endl;
   //  }
 }
+
+DEFINE_ART_SERVICE(sbnd::DigitalNoiseChannelStatus)
+
+

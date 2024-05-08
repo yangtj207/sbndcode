@@ -35,7 +35,9 @@ public:
   const std::unordered_set<raw::ChannelID_t> & GetSetOfBadChannels() const;
 
   size_t NBadChannels() const;
-  
+
+  void pub_PrepEvent(const art::Event& evt, art::ScheduleContext);
+
 private:
 
   std::unordered_set<raw::ChannelID_t> fDNChannels;   // set of channels with digital noise on them on this event
@@ -45,11 +47,13 @@ private:
   std::string fRawDigitLabel;
   std::string fRecobWireLabel;
 
-  void priv_PrepEvent(const art::Event& evt, art::ScheduleContext);
-
+  int fNAwayFromPedestalRawDigit;
+  int fDistFromPedestalRawDigit;
+  int fNAwayFromPedestalRecobWire;
+  float fDistFromPedestalRecobWire;
+  
 };
 
 DECLARE_ART_SERVICE(sbnd::DigitalNoiseChannelStatus, LEGACY)
-DEFINE_ART_SERVICE(sbnd::DigitalNoiseChannelStatus)
 
 #endif
