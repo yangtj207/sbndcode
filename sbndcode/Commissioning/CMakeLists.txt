@@ -39,6 +39,7 @@ set(
         sbndcode_RecoUtils
         sbndcode_OpDetSim
         sbndcode_GeoWrappers
+        sbndcode_Utilities_DigitalNoiseChannelStatus_service
 )
 
 
