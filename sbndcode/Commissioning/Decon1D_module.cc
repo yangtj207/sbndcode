@@ -22,6 +22,9 @@
 #include "lardataobj/RawData/raw.h"
 #include "larcore/Geometry/Geometry.h"
 
+#include "sbndcode/Utilities/DigitalNoiseChannelStatus.h"
+#include "sbndcode/ChannelMaps/TPC/TPCChannelMapService.h"
+
 #include "TFile.h"
 #include "TH1D.h"
 #include "TComplex.h"
@@ -31,7 +34,6 @@
 #include <vector>
 #include <complex>
 #include <iostream>
-#include <fftw3.h>
 
 namespace sbnd {
   class Decon1D;
@@ -60,7 +62,10 @@ private:
   art::InputTag fRawDigitModuleLabel;
   std::string   fResponseFile;
   vector<vector<TComplex>> vresp;
-
+  vector<float> normalization;
+  vector<float> roi_threshold;
+  vector<float> sigprotection;
+  vector<unsigned int>   excluchannels;
 };
 
 
@@ -68,6 +73,10 @@ sbnd::Decon1D::Decon1D(fhicl::ParameterSet const& p)
   : EDProducer{p}  // ,
   , fRawDigitModuleLabel{p.get<art::InputTag>("RawDigitModuleLabel")}
   , fResponseFile(p.get<std::string>("ResponseFile"))
+  , normalization(p.get<vector<float>>("normalization"))
+  , roi_threshold(p.get<vector<float>>("roi_threshold"))
+  , sigprotection(p.get<vector<float>>("sigprotection"))
+  , excluchannels(p.get<vector<unsigned int>>("excluchannels"))
 {
   produces<std::vector<recob::Wire>>();
 
@@ -104,6 +113,8 @@ void sbnd::Decon1D::produce(art::Event& e)
   auto out_recowaveforms = std::make_unique< std::vector< recob::Wire > >();
 
   art::ServiceHandle<geo::Geometry> geo;
+  art::ServiceHandle<sbnd::DigitalNoiseChannelStatus> chstatus;
+  art::ServiceHandle<SBND::TPCChannelMapService> channelMap;
 
   int n = 3415;
 
@@ -111,17 +122,78 @@ void sbnd::Decon1D::produce(art::Event& e)
   TVirtualFFT *fftc2r = TVirtualFFT::FFT(1,&n,"C2R ES K");
 
   // Get raw digits
-  auto const& rawdigts = e.getProduct<std::vector<raw::RawDigit>>(fRawDigitModuleLabel);
-  for (const auto & rd : rawdigts){
+  auto const& rawdigits = e.getProduct<std::vector<raw::RawDigit>>(fRawDigitModuleLabel);
+
+  // make a big map of mean ADC values for each plane and FEMB for each tick.
+  // for correlated noise removing
+  // first index -- femb, second index, plane, third index: tick
+
+  unordered_map<int, unordered_map<int, unordered_map<int, double>>> meanmap;
+
+  for (int itick = 0; itick < n; ++itick){
+
+    unordered_map<int, unordered_map<int, vector<double>>> adcvmap;
+
+    for (size_t ichan=0; ichan<rawdigits.size(); ++ichan){
+
+      unsigned int ic = rawdigits[ichan].Channel();
+      auto const & ci = channelMap->GetChanInfoFromOfflChan(ic);
+      if (chstatus->IsBad(ic)) continue;
+      bool exclu = false;
+      for (auto const & ch : excluchannels){
+        if (ic == ch) exclu = true;
+      }
+      if (exclu) continue;
+      auto const & chids = geo->ChannelToWire(ic);
+      int fembident = 100*ci.WIBCrate + 10*ci.WIB + ci.FEMBOnWIB;
+      // to do -- remove ROIs with signals
+      if (abs(rawdigits[ichan].ADC(itick) - rawdigits[ichan].GetPedestal())<sigprotection[chids[0].TPC*3+chids[0].Plane]){
+        adcvmap[fembident][ci.plane].push_back(rawdigits[ichan].ADC(itick) - rawdigits[ichan].GetPedestal());
+      }
+    }
+	    
+    for (const auto& fp : adcvmap){  // loop over FEMBs
+      
+      for (const auto& pp : fp.second){  // loop over planes
+
+        double adcmed = TMath::Mean(pp.second.size(),pp.second.data());
+        meanmap[fp.first][pp.first][itick] = adcmed;
+      }
+    }
+  }
+
+
+  for (const auto & rd : rawdigits){
     std::vector<short> rawadc;      //UNCOMPRESSED ADC VALUES.
     rawadc.resize(rd.Samples());
     raw::Uncompress(rd.ADCs(), rawadc, rd.GetPedestal(), rd.Compression());
-    int ch = rd.Channel();
-    auto const & chids = geo->ChannelToWire(ch);
+    std::vector<float> adc_fft;
+    std::vector<bool> inroi(n,false);
+    recob::Wire::RegionsOfInterest_t rois(n);
+    unsigned int ic = rd.Channel();
+    bool exclu = false;
+    for (auto const & ch : excluchannels){
+      if (ic == ch) exclu = true;
+    }
+    if (exclu) continue;
+    auto const & ci = channelMap->GetChanInfoFromOfflChan(ic);
+    int fembident = 100*ci.WIBCrate + 10*ci.WIB + ci.FEMBOnWIB;
+    auto const & chids = geo->ChannelToWire(ic);
     int plane = chids[0].Plane;
     int tpc = chids[0].TPC;
+
+    if (chstatus->IsBad(ic)){
+      //cout<<"Bad channel. TPC = "<<tpc<<" "<<plane<<" "<<chids[0].Wire<<endl;
+//      for (int i = 0; i<n; ++i){
+//        adc_fft.push_back(0);
+//      }
+//      rois.add_range(0, std::move(adc_fft));
+//      out_recowaveforms->emplace_back(recob::Wire(rois, rd.Channel(), geo->View(rd.Channel())));
+      continue;
+    }
     for (size_t i = 0; i<rawadc.size(); ++i){
-      fftr2c->SetPoint(i, rawadc[i] - rd.GetPedestal());
+      fftr2c->SetPoint(i, rawadc[i] - rd.GetPedestal() - meanmap[fembident][plane][i]);
+      //fftr2c->SetPoint(i, rawadc[i] - rd.GetPedestal());
     }
     fftr2c->Transform();
     for (size_t i = 0; i<rawadc.size()/2+1; ++i){
@@ -131,13 +203,48 @@ void sbnd::Decon1D::produce(art::Event& e)
       fftc2r->SetPointComplex(i,point);
     }
     fftc2r->Transform();
-    std::vector<float> sigs;
     for (int i = 0; i<n; ++i){
-      sigs.push_back(fftc2r->GetPointReal(i)/n*100);
+      adc_fft.push_back(fftc2r->GetPointReal(i)/n*normalization[plane+3*tpc]);
     }
-    recob::Wire::RegionsOfInterest_t rois(n);
-    rois.add_range(0, std::move(sigs));
-    out_recowaveforms->emplace_back(recob::Wire(rois, rd.Channel(), geo->View(rd.Channel())));
+    for (int i = 0; i<n; ++i){
+      if (adc_fft[i] > roi_threshold[plane+3*tpc]){
+        for (int j = i - 100; j < i + 100; ++j){
+          if (j>=0 && j<n){
+            inroi[j] = true;
+          }
+        }
+      }
+    }
+
+    std::vector<float> sigs;
+    int lastsignaltick = -1;
+    int roistart = -1;
+    bool hasROI = false;
+    for (int i = 0; i < n; ++i) {
+      if (inroi[i]) {
+        hasROI = true;
+        if (sigs.empty()) {
+          sigs.push_back(adc_fft[i]);
+          lastsignaltick = i;
+          roistart = i;
+        }
+        else {
+          if (int(i) != lastsignaltick + 1) {
+            rois.add_range(roistart, std::move(sigs));
+            sigs.clear();
+            sigs.push_back(adc_fft[i]);
+            lastsignaltick = i;
+            roistart = i;
+          }
+          else {
+            sigs.push_back(adc_fft[i]);
+            lastsignaltick = i;
+          }
+        }
+      }
+    }    
+    if (!sigs.empty()) { rois.add_range(roistart, std::move(sigs)); }
+    if (hasROI) out_recowaveforms->emplace_back(recob::Wire(rois, rd.Channel(), geo->View(rd.Channel())));
   }
   e.put(std::move(out_recowaveforms));
 }
