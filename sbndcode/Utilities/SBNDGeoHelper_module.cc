@@ -64,6 +64,7 @@ util::SBNDGeoHelper::SBNDGeoHelper(fhicl::ParameterSet const& p)
     cout<<"0: quit"<<endl;
     cout<<"1: convert tpc/plane/wire to offline channel number"<<endl;
     cout<<"2: find intersection of two wires"<<endl;
+    cout<<"3: convert offline channel number to tpc/plane/wire numbers"<<endl;
     cout<<"Type a number: ";
     cin >> input;
     if (input == 1){
@@ -116,10 +117,15 @@ util::SBNDGeoHelper::SBNDGeoHelper(fhicl::ParameterSet const& p)
       if (intersect){
         cout<<"It is inside the detector."<<endl;
       }
-      else{
-        cout<<"It is outside the detector."<<endl;
-      }
     }
+    else if (input == 3){
+      cout<<"Convert offline channel number to tpc/plane/wire numbers."<<endl;
+      cout<<"Offline channel number: ";
+      int ch;
+      cin>>ch;
+      auto const & wireid = geo->ChannelToWire(ch);
+      cout<<wireid[0].toString()<<endl;
+    }    
   }
 
 }
